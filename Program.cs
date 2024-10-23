@@ -9,6 +9,7 @@ builder.Services.AddSwaggerGen();
 
 builder.Services.AddControllers();
 builder.Services.AddScoped<BlobService>();
+builder.Services.AddScoped<BlobServiceAuth>();
 
 var app = builder.Build();
 
