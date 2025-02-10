@@ -1,125 +1,118 @@
 ﻿using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
+using BlobStorageApi.Services.Interfaces;
 using System.Text;
 
-public class BlobService
+namespace AzureBlobStorage.Services;
+
+/// <summary>
+/// Provides operations for working with Azure Blob Storage.
+/// </summary>
+public class BlobService : IBlobService
 {
-    private readonly BlobServiceClient _blobServiceClient;
-    private readonly string _containerName;
+	private readonly BlobServiceClient _blobServiceClient;
+	private readonly string _containerName;
 
-    /// <summary>
-    /// Constructor to initialize BlobService with configuration.
-    /// Retrieves connection string and container name from configuration.
-    /// </summary>
-    /// <param name="configuration">Configuration object to access settings</param>
-    public BlobService(IConfiguration configuration)
-    {
-        var connectionString = configuration["AzureBlobStorage:ConnectionString"];
-        _blobServiceClient = new BlobServiceClient(connectionString);
-        _containerName = configuration["AzureBlobStorage:ContainerName"];
-    }
+	/// <summary>
+	/// Initializes a new instance of the <see cref="BlobService"/> class.
+	/// </summary>
+	/// <param name="configuration">The configuration instance for accessing Blob Storage settings.</param>
+	public BlobService(IConfiguration configuration)
+	{
+		var connectionString = configuration["AzureBlobStorage:ConnectionString"];
+		_blobServiceClient = new BlobServiceClient(connectionString);
+		_containerName = configuration["AzureBlobStorage:ContainerName"];
+	}
 
-    /// <summary>
-    /// Uploads a blob to the specified container.
-    /// If the container does not exist, it will be created with public access.
-    /// </summary>
-    /// <param name="fileName">Name of the file to be uploaded</param>
-    /// <param name="fileStream">Stream containing the file data</param>
-    /// <returns>URL of the uploaded blob</returns>
-    public async Task<string> UploadBlobAsync(string fileName, Stream fileStream)
-    {
-        var blobContainerClient = _blobServiceClient.GetBlobContainerClient(_containerName);
-        await blobContainerClient.CreateIfNotExistsAsync(PublicAccessType.Blob);
-        //Creación de un objeto BlobClient
-        var blobClient = blobContainerClient.GetBlobClient(fileName);
-        await blobClient.UploadAsync(fileStream, true);
-        return blobClient.Uri.ToString();
-    }
+	public async Task<string> UploadBlobAsync(string fileName, Stream fileStream)
+	{
+		var blobContainerClient = _blobServiceClient.GetBlobContainerClient(_containerName);
+		await blobContainerClient.CreateIfNotExistsAsync(PublicAccessType.Blob);
+		var blobClient = blobContainerClient.GetBlobClient(fileName);
+		await blobClient.UploadAsync(fileStream, overwrite: true);
+		return blobClient.Uri.ToString();
+	}
 
-    /// <summary>
-    /// Deletes a blob from the specified container if it exists.
-    /// </summary>
-    /// <param name="fileName">Name of the file to be deleted</param>
-    /// <returns>Boolean indicating if the blob was deleted successfully</returns>
-    public async Task<bool> DeleteBlobAsync(string fileName)
-    {
-        var blobContainerClient = _blobServiceClient.GetBlobContainerClient(_containerName);
-        //Creación de un objeto BlobClient
-        var blobClient = blobContainerClient.GetBlobClient(fileName);
-        return await blobClient.DeleteIfExistsAsync();
-    }
+	public async Task<bool> DeleteBlobAsync(string fileName)
+	{
+		var blobContainerClient = _blobServiceClient.GetBlobContainerClient(_containerName);
+		var blobClient = blobContainerClient.GetBlobClient(fileName);
+		return await blobClient.DeleteIfExistsAsync();
+	}
 
-    /// <summary>
-    /// Retrieves a blob as a stream from the specified container.
-    /// </summary>
-    /// <param name="fileName">Name of the file to be retrieved</param>
-    /// <returns>Stream containing the blob data</returns>
-    public async Task<Stream> GetBlobAsync(string fileName)
-    {
-        var blobContainerClient = _blobServiceClient.GetBlobContainerClient(_containerName);
-        //Creación de un objeto BlobClient
-        var blobClient = blobContainerClient.GetBlobClient(fileName);
-        var response = await blobClient.DownloadAsync();
-        return response.Value.Content;
-    }
+	public async Task<Stream> GetBlobAsync(string fileName)
+	{
+		var blobContainerClient = _blobServiceClient.GetBlobContainerClient(_containerName);
+		var blobClient = blobContainerClient.GetBlobClient(fileName);
+		var response = await blobClient.DownloadAsync();
+		return response.Value.Content;
+	}
 
-    /// <summary>
-    /// Creates a directory in the blob container by uploading a placeholder file.
-    /// </summary>
-    /// <param name="directoryName">Name of the directory to be created</param>
-    public async Task CreateDirectoryAsync(string directoryName)
-    {
-        var blobContainerClient = _blobServiceClient.GetBlobContainerClient(_containerName);
-        await blobContainerClient.CreateIfNotExistsAsync(PublicAccessType.Blob);
+	public async Task CreateDirectoryAsync(string directoryName)
+	{
+		var blobContainerClient = _blobServiceClient.GetBlobContainerClient(_containerName);
+		await blobContainerClient.CreateIfNotExistsAsync(PublicAccessType.Blob);
+		var blobClient = blobContainerClient.GetBlobClient($"{directoryName.TrimEnd('/')}/placeholder.txt");
+		using var stream = new MemoryStream(Encoding.UTF8.GetBytes("This is a placeholder for the directory."));
+		await blobClient.UploadAsync(stream, overwrite: true);
+	}
 
-        // The directory name must end with a slash "/"
-        //Creación de un objeto BlobClient
-        var blobClient = blobContainerClient.GetBlobClient($"{directoryName.TrimEnd('/')}/placeholder.txt");
+	public async Task CreateContainer(string containerName)
+	{
+		await _blobServiceClient.CreateBlobContainerAsync(containerName);
+	}
 
-        // Create an empty file as a directory placeholder
-        using (var stream = new MemoryStream(Encoding.UTF8.GetBytes("This is a placeholder for the directory.")))
-        {
-            await blobClient.UploadAsync(stream, true);
-        }
-    }
+	public async Task<List<BlobItem>> GetBlobList(string containerName)
+	{
+		List<BlobItem> response = new List<BlobItem>();
+		var blobContainerClient = _blobServiceClient.GetBlobContainerClient(containerName);
+		await foreach (BlobItem blobItem in blobContainerClient.GetBlobsAsync())
+		{
+			response.Add(blobItem);
+		}
+		return response;
+	}
 
-    /// <summary>
-    /// Creación de un contenedor
-    /// // Create the container and return a container client object
-    /// </summary>
-    /// <param name="containerName">Container name</param>
-    /// <returns></returns>
-    public async Task CreateContainer(string containerName)
-    {
-        var blobContainerClient = await _blobServiceClient.CreateBlobContainerAsync(containerName);
+	public async Task<BlobContainerProperties> GetContainerProperties(string containerName)
+	{
+		var blobContainerClient = _blobServiceClient.GetBlobContainerClient(containerName);
+		return await blobContainerClient.GetPropertiesAsync();
+	}
 
-    }
+	public async Task<IDictionary<string, string>> GetBlobMetadataAsync(string blobName)
+	{
+		var blobContainerClient = _blobServiceClient.GetBlobContainerClient(_containerName);
+		var blobClient = blobContainerClient.GetBlobClient(blobName);
+		var properties = await blobClient.GetPropertiesAsync();
+		return properties.Value.Metadata;
+	}
 
+	public async Task SetBlobMetadataAsync(string blobName, IDictionary<string, string> metadata)
+	{
+		var blobContainerClient = _blobServiceClient.GetBlobContainerClient(_containerName);
+		var blobClient = blobContainerClient.GetBlobClient(blobName);
+		await blobClient.SetMetadataAsync(metadata);
+	}
 
-    /// <summary>
-    //Enumerar los blobs de un contenedor
-    // List blobs in the container
-    /// </summary>
-    /// <param name="containerName">Container name</param>
-    /// <returns>Task<List<BlobItem>></returns>
-    public async Task<List<BlobItem>> GetBlobList(string containerName)
-    {
-        List<BlobItem> respones = new List<BlobItem>();
-        var blobContainerClient = _blobServiceClient.GetBlobContainerClient(containerName);
-        var test = blobContainerClient.GetBlobsAsync();
+	public async Task<string> CopyBlobAsync(string sourceBlobName, string destinationBlobName)
+	{
+		var blobContainerClient = _blobServiceClient.GetBlobContainerClient(_containerName);
+		var sourceBlobClient = blobContainerClient.GetBlobClient(sourceBlobName);
 
-        await foreach (BlobItem blobItem in blobContainerClient.GetBlobsAsync())
-        {
-            respones.Add(blobItem);
-        }
-        return respones;
-    }
+		var destBlobClient = blobContainerClient.GetBlobClient(destinationBlobName);
 
-    public async Task<BlobContainerProperties> GetContainerProperties(string containerName)
-    {
-        var blobContainerClient = _blobServiceClient.GetBlobContainerClient(containerName);
-        return  await blobContainerClient.GetPropertiesAsync();
-    }
+		var copyOperation = await destBlobClient.StartCopyFromUriAsync(sourceBlobClient.Uri);
+		
+		return destBlobClient.Uri.ToString();
+	}
 
+	public async Task<string> CreateBlobSnapshotAsync(string blobName)
+	{
+		var blobContainerClient = _blobServiceClient.GetBlobContainerClient(_containerName);
+		var blobClient = blobContainerClient.GetBlobClient(blobName);
+		var snapshotResponse = await blobClient.CreateSnapshotAsync();
+		
+		return snapshotResponse.Value.Snapshot;
+	}
 }
 

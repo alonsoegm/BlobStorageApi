@@ -1,15 +1,18 @@
+using AzureBlobStorage.Services;
+using BlobStorageApi.Services.Interfaces;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 
 builder.Services.AddControllers();
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 builder.Services.AddControllers();
-builder.Services.AddScoped<BlobService>();
+builder.Services.AddScoped<IBlobService, BlobService>();
 builder.Services.AddScoped<BlobServiceAuth>();
+builder.Services.AddScoped<CosmosDbService>();
 
 var app = builder.Build();
 
